@@ -1,0 +1,441 @@
+#include<stdio.h>
+#include<stdlib.h>
+#include<iostream>
+#include<time.h>
+#define MONEY 5000   //个人业务值，交易上限
+#define OK 1
+#define ERROR 0
+#define OVERFLOW -2
+using namespace std;
+typedef int status;
+typedef struct 
+{
+    int arrivetime;   //到达时间
+	int Occurtime;   //事件发生时间
+	int NType;   //事件类型，0表示到达事件，1表示离开事件，同时用1表示存款，2表示取款
+	int duration;   //办理业务事件
+	long int money;    //交易金额
+}Event,ElemType1;
+typedef struct
+{
+   int arrivetime;   //到达时间
+   int duration;    //办理业务时间
+   long int money;    //交易时间
+}wait,ElemType2;
+typedef struct QNode1
+{
+   ElemType1 data;
+   struct QNode1 *next;
+}QNode1,*Queue1;     
+typedef struct QNode2
+{
+   ElemType2 data;
+   struct QNode2 *next;
+}QNode2,*Queue2;   
+typedef struct
+{
+     Queue1 front;
+	 Queue1 rear;
+}LinkQueue1;     //队列1
+typedef struct
+{
+     Queue2  front;
+	 Queue2  rear;
+}LinkQueue2;    //队列2
+//全局变量
+long int total_money;    //银行现存资金总额
+int total_time;   //客户逗留总时间
+int use_time;     //每个顾客所用时间
+int money;     //每个客户办理的款数
+int closetime;     //银行营业时间
+int INTERTIME;     //下一个用户到达的时间间隔
+int DURATION;     //办理业务所需时间
+int number;    //办理业务次序
+int time1;    //系统现在时间
+LinkQueue1 Q1;
+LinkQueue2 Q2;
+Event en;     //事件
+wait en1;    //列表2元素
+
+//初始化队列1
+status InitQueu1()
+{
+    Q1.front=Q1.rear=(Queue1)malloc(sizeof(QNode1));
+	if(!Q1.front)
+		exit(OVERFLOW);
+	Q1.front->next=NULL;
+	return OK;
+}
+//初始化队列2
+status InitQueu2()
+{
+    Q2.front=Q2.rear=(Queue2 )malloc(sizeof(QNode2));
+	if(!Q2.front)
+		exit(OVERFLOW);
+	Q2.front->next=NULL;
+	return OK;
+}
+//销毁队列1
+status destroyqueue1()
+{
+	while(Q1.front)
+	{
+	   Q1.rear=Q1.front->next;
+	   free(Q1.front);
+	   Q1.front=Q1.rear;
+	}
+	return OK;
+}
+
+//销毁队列2
+status destroyqueue2()
+{
+	while(Q1.front)
+	{
+	   Q2.rear=Q2.front->next;
+	   free(Q2.front);
+	   Q2.front=Q2.rear;
+	}
+	return OK;
+}
+//队列1入队
+status EnQueue1()
+{
+   Queue1 p,r,r1;
+   p=(Queue1)malloc(sizeof(QNode1));
+   if(!p)
+	   exit(OVERFLOW);
+   p->data.arrivetime=en.arrivetime;    //到达时间
+   p->data.Occurtime=en.Occurtime;    //时间发生时间
+   p->data.NType=en.NType;    //事件类型
+   p->data.duration=en.duration;     //办理业务时间
+   p->data.money=en.money;
+   r=Q1.front->next;
+   while(r)
+   {
+      if(p->data.arrivetime<r->data.arrivetime)
+	  {
+	      if(r==Q1.front->next)
+		  {
+		     p->next=r;
+			 Q1.front->next=p;
+		  }
+		  else
+		  {
+		    r1->next=p;
+			p->next=r;
+		  }
+	  }
+	  r1=r;
+	  r=r->next;
+   }
+   if(!r)
+   {
+      if(Q1.front->next==NULL)
+	  {
+	     Q1.front->next=p;
+		 Q1.rear=p;
+		 Q1.rear->next=NULL;
+	  }
+	  else
+	  {
+	     p->next=NULL;
+		 Q1.rear->next=p;
+		 Q1.rear=p;
+	  }
+   }
+   return OK;
+}
+//队列2入队
+status EnQueue2()
+{
+   Queue2 p;
+   p=(Queue2)malloc(sizeof(QNode2));
+   if(!p)
+	   exit(OVERFLOW);
+   p->data.arrivetime=en1.arrivetime;
+   p->data.duration=en1.duration;
+   p->data.money=en1.money;
+   p->next=NULL;
+   Q2.rear->next=p;
+   Q2.rear=p;
+   return OK;
+}
+//若队列1不空，删除Q1队头元素，用en返回值
+status DeQueue1()
+{
+  Queue1 p;
+  if(Q1.front==Q1.rear)
+	  return ERROR;
+  p=Q1.front->next;
+  en.arrivetime=p->data.arrivetime;
+  en.Occurtime=p->data.Occurtime;
+  en.NType=p->data.NType;
+  en.duration=p->data.duration;
+  en.money=p->data.money;
+  Q1.front->next=p->next;
+  if(Q1.rear==p)
+	  Q1.rear=Q1.front;  
+  free(p);
+  return OK;
+}
+
+//若队列2不空，删除队列Q2队头元素，用en1返回值
+status DeQueue2()
+{
+   Queue2 p;
+   if(Q2.front==Q2.rear)
+	   return ERROR;
+   p=Q2.front->next;
+   en1.arrivetime=p->data.arrivetime;
+   en1.duration=p->data.duration;
+   en1.money=p->data.money;
+   Q2.front->next=p->next;
+   if(Q2.rear==p)
+	   Q2.rear=Q2.front;   
+   free(p);
+   return OK;
+}
+
+//营业时间结束，全部客户离开银行
+void free_system()
+{
+   destroyqueue1();
+
+   destroyqueue2();
+}
+//产生随机数
+status rand_ar(int *intertime,long int *money,int *duration,int *NType)
+{
+   *intertime = rand()%INTERTIME +1;   //下个客户到达时间间隔，不大于INTERTIME
+
+   *money=rand()%MONEY+1;   //每个客户办理款数，不大于MONEY；
+
+   *duration=rand()%DURATION +1;  //每个客户办理业务所需时间，不大于DURATION
+
+   *NType=rand()%2;  //时间类型分为0,1两种
+   return OK;
+}
+
+void OpenForDay()
+{ //初始化操作
+	cout<<"请输入银行的初始存款: ";
+	cin>>total_money;
+	cout<<"请输入银行营业时间(分钟): ";
+	cin>>closetime;
+	cout<<"请输入最大到达时间间隔(分钟): ";
+	cin>>INTERTIME;
+	cout<<"请输入最大处理时间(分钟): ";
+	cin>>DURATION;
+	total_time=0;  //客户逗留总时间
+	number=0; //办理业务次序
+	InitQueu1();   //初始化队列1
+	InitQueu2();   //初始化队列2
+	en.arrivetime=0;  //到达时间
+	en.Occurtime=0;  //事件发生时间
+	en.NType=0;  //时间类型，暂时
+	en.money=0;  //金额，暂时
+	en.duration=0;   //办理业务时间，暂时
+	EnQueue1();   //事件1进栈
+}
+
+//查找上一次离开事件的发生事件
+int find_leave()
+{
+   Queue1 p;
+   int i=0;
+   p=Q1.front->next;
+   while(p!=NULL)
+   {
+      if(p->data.NType!=0)
+	     i=p->data.Occurtime;
+		 p=p->next;
+   }
+    return i;     //记录队列1客户离开时间
+}
+
+void CustomerArrived()    //客户到达事件
+{
+   int intertime;
+   int i;
+   time1=en.Occurtime;    //系统现在时间
+
+   rand_ar(&intertime,&(en.money),&(en.duration),&(en.NType));  
+   en.NType++; //1表示存款，2表示取款
+   i=find_leave();  //查找上一离开事件发生时间
+   if(i==0)  //第一位顾客
+	   en.Occurtime=en.arrivetime+en.duration;   //事件发生时间=事件到达时间+办理业务时间
+   else
+	   if(i>=en.arrivetime)  //本事件到达时上一事件还为离开
+		   en.Occurtime=i+en.duration;    //本事件发生时间=上一事件离开时间+办理业务时间
+	   else  //上一事件离开后，本事件到达
+		   en.Occurtime=en.arrivetime+en.duration;    ////事件发生时间=事件到达时间+办理业务时间
+   EnQueue1();    //设置下一用户到达时间插入队列1
+   en.arrivetime=en.arrivetime+intertime;  //下一用户到达时间
+   en.Occurtime=en.arrivetime;
+   en.NType=0;
+   en.money=0;
+   en.duration=0;
+   EnQueue1();
+}
+
+//返回队列2的长度
+int getlong_q2()
+{
+   int i=0;
+   Queue2 p;
+   p=Q2.front->next;
+   while(p)
+   {
+      i++;
+	  p=p->next;
+   }
+   return i;
+}
+//顺序检查队列2是否有满足条件者
+status check_q2()
+{
+	int i,j,z=0;
+	i=getlong_q2();  //用i返回队列2长度
+	for(j=1;j<=i;j++)
+	{
+	  DeQueue2();  //出队 
+	  if(en1.money<=total_money)  //队列2出队要交易的元素金额<=银行现存金额
+	  {
+	     if(time1>closetime)   //银行关门
+			 cout<<"\t \t "<<z<<"\t \t "<<use_time<<"\t \t "<<number<<"\t \t "<<z<<"\t \t "<<en1.arrivetime<<"\t"<<en1.money<<endl;
+		 else
+		 {
+		 time1=time1+en1.duration;   //更新系统时间
+		 use_time=time1-en1.arrivetime;
+		 total_time+=use_time;   //更新逗留时间
+		 total_money=en1.money;  //更新资金总额
+		 number++;  //更新实行交易客户客户数
+		 cout<<total_money<<"\t \t"<<use_time<<"\t \t"<<number<<"\t \t"<<time1<<"\t \t"<<en1.arrivetime<<"\t"<<en1.money<<endl;
+		  
+		 }
+	  }
+	  else
+	  {
+	     if(time1>closetime)
+			 cout<<"\t \t"<<z<<"\t \t"<<use_time<<"\t \t"<<number<<"\t \t"<<z<<"\t \t"<<en1.arrivetime<<"\t"<<en1.money<<endl;
+		 else
+			 EnQueue2();  //继续插入队列2对尾，继续等待
+	  }
+	}
+	return OK;
+}
+
+//队列1离开事件减duration
+int cut_duration(int e)
+{
+   Queue1 p,q,r;
+   ElemType1 en;
+   p=Q1.front->next;
+   r=Q1.front;
+   if(p)
+   {
+      if(p->data.NType!=0)
+	  {
+	     q=p->next;
+		 r->next=q;  //删除节点
+		 en.arrivetime=p->data.arrivetime;   //到达时间
+		 en.Occurtime=p->data.Occurtime-e;  //事件发生时间
+		 en.NType=p->data.duration;  //办理业务时间
+		 en.money=p->data.money;  //数额
+		 free(p);
+		 EnQueue1();
+	  }
+   }
+   return OK;
+}
+
+void CustomerDeparture()     //客户离开事件
+{
+   int i;
+   i=en.NType;  //业务类型，1表示存款，2表示取款
+   time1=en.Occurtime-en.duration;
+   if(i==OK)    //是否办理存款业务
+   {
+	   if(en.Occurtime>closetime)
+	   {
+	      free_system();
+	   }
+	   else    //营业时间没有结束，继续办理
+	   {
+	      use_time=en.Occurtime-en.arrivetime;
+		  total_time+=use_time;   //更新逗留时间
+		  total_money=total_money+en.money;   //更新资金总额
+		  number++; 
+		  time1=en.Occurtime;
+		  cout<<total_money<<"\t \t"<<use_time<<"\t \t"<<number<<"\t \t"<<en.Occurtime<<"\t \t"<<en.arrivetime<<"\t \t"<<en.money<<endl;
+		  check_q2();   //检查队列2是否满足条件者
+	   }
+   }
+   else   //办理取款
+   {
+      if(en.money>total_money)   //取款得不到满足入队列2
+	  {
+	     cut_duration(en.duration);  //从队列1中删除节点
+		 en1.duration=en.duration;
+		 en1.money=en.money;
+		 EnQueue2();   //进入队列2继续等待
+	  }
+	  else   //取款可以满足
+	  {
+	     if(en.Occurtime>closetime)
+		 {
+		    free_system();
+		 }
+		 else
+		 {
+		    use_time=en.Occurtime-en.arrivetime;
+			total_time+=use_time;
+			total_money=en.money;
+			time1=en.Occurtime;
+			number++;
+			cout<<total_money<<"\t \t"<<use_time<<"\t \t"<<number<<"\t \t"<<en.Occurtime<<"\t \t"<<en.arrivetime<<"\t \t"<<en.money<<endl;
+		 }
+	  }
+   }
+}
+   void main()
+   {
+	   cout<<"======================================================================================"<<endl;
+	   cout<<"     欢迎使用银行模拟系统"<<endl;
+	  cout<<"======================================================================================"<<endl;
+	   cout<<"1.进入银行模拟系统"<<endl;
+	   cout<<"0.退出程序"<<endl;
+	   int n;
+	   cin>>n;
+	   while(n==1)
+	   {
+	      OpenForDay();   //初始化操作
+		  cout<<"-----------------------------------------------------------------------------------"<<endl;
+		  cout<<"Total_money \tuse_time \tnumber  \ten.OccurTime  \ten.arrivetime  \tmoney  "<<endl;
+		  {
+		  while(Q1.front)
+		  {
+		     DeQueue1();   //队列1出队用en返回
+			 if(en.NType==0)
+				 CustomerArrived();    //客户到达事件
+			 else
+				 CustomerDeparture();  //客户离开事件
+		  }
+		  cout<<"1.营业结束后银行现存资金总额"<<total_money<<endl;
+		  cout<<"2.营业时间内实现交易的客户数"<<number<<endl;
+		  cout<<"3.客户在银行逗留总时间"<<total_time<<endl;
+		  cout<<"4.客户在银行平均逗留时间"<<(float)total_time/(float)number<<endl;
+		  cout<<"--------------------------------------------------------------------------------------"<<endl;
+	   }
+	   cout<<"以上为模拟结果！请继续选择继续或退出:"<<endl;
+	   cout<<"1.继续模拟"<<endl;
+	   cout<<"0.退出程序"<<endl;
+	   cin>>n;
+	   if(n==0)
+	   {
+	      cout<<"谢谢使用本系统,再见!"<<endl;
+		  break;
+	   }
+	   }
+   }
